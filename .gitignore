@@ -1,2 +1,17 @@
-*.class
+# Created by .ignore support plugin (hsz.mobi)
+*.iml
+*.sc
 *.log
+*~
+target/
+logs/
+.idea/
+.DS_Store
+lib_managed
+.history
+.reviewboardrc
+erl_crash.dump
+conf/env/base/
+.gitignore
+git-hooks/*/local/*
+.bloop
