@@ -1,22 +1,24 @@
 package com.peschke.fractals.gui
 
-import java.awt._
 import java.awt.geom.AffineTransform
+import java.awt.image.BufferedImage
+import java.awt.{List => _, _}
 import java.util.TimerTask
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReference}
 
-import com.peschke.fractals.gui.Canvas.{Animation, Frame}
+import com.peschke.fractals.gui.Canvas.Element
 import javax.swing._
 import javax.swing.border.BevelBorder
 
-class Canvas(defaultDelay: Int, margin: Double = Canvas.DefaultMargin) {
-  private final val rawFrames = new AtomicReference[Animation](Vector.empty)
-  private final val shiftedFrames = new AtomicReference[Animation](Vector.empty)
+class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin) {
+  private final val rawElements = new AtomicReference[Vector[Element]](Vector.empty)
+  private final val shiftedElements = new AtomicReference[Vector[Element]](Vector.empty)
+  private final val drawnElements = new AtomicReference[Vector[Element]](Vector.empty)
+  private final val pendingElements = new AtomicReference[List[Element]](List.empty)
+  private final val buffer = new AtomicReference[BufferedImage](Canvas.createImage(500, 500))
 
   private final val frameDrawnFlag = new AtomicBoolean(false)
   private final val atomicDelay = new AtomicInteger(defaultDelay)
-  private final val atomicFrameIndex = new AtomicInteger(0)
-
   private final val animatingFlag = new AtomicBoolean(false)
   private final val animationTimer = new java.util.Timer("Canvas Animation Timer")
   private final val atomicFrameAdvanceTask = new AtomicReference[Option[TimerTask]](None)
@@ -27,37 +29,46 @@ class Canvas(defaultDelay: Int, margin: Double = Canvas.DefaultMargin) {
       super.paintComponent(graphics)
       graphics.create() match {
         case g2D: Graphics2D =>
-          val frameIndex = atomicFrameIndex.get()
-          val framesToDraw = shiftedFrames.get()
-          framesToDraw.take(frameIndex).foreach(_.foreach {
-            case (shape, color) =>
-              g2D.setColor(color)
-              g2D.draw(shape)
-          })
+          val img = buffer.get()
+          val clip = g2D.getClipBounds
+          val width: Int =
+            if (clip.x + clip.width > img.getWidth) img.getWidth - clip.x
+            else clip.width
+
+          val height: Int =
+            if (clip.y + clip.height > img.getHeight) img.getHeight - clip.y
+            else clip.height
+
+          img.getSubimage(clip.x, clip.y, width, height)
+          g2D.drawImage(img.getSubimage(clip.x, clip.y, width, height), clip.x, clip.y, this)
           g2D.dispose()
+          frameDrawnFlag.set(true)
         case _               => println(s"Not 2D Graphics! <${graphics.getClass.getCanonicalName}>")
       }
-      frameDrawnFlag.set(true)
     }
   }
-  panel.setBorder(BorderFactory.createBevelBorder(BevelBorder.LOWERED))
   panel.setVisible(true)
   private val scrollPane: JScrollPane = new JScrollPane(panel)
+  scrollPane.setBorder(BorderFactory.createBevelBorder(BevelBorder.LOWERED))
   scrollPane.setVisible(true)
 
-  private final def createFrameAdvanceTask: TimerTask = new TimerTask {
+  private final def createElementAdvanceTask: TimerTask = new TimerTask {
     override def run(): Unit = {
       if (animatingFlag.get()) {
         if (frameDrawnFlag.get()) {
-          val maxIndex = atomicFrameIndex.get()
-          val drawActionsCount = rawFrames.get().length
-          val newMaxIndex = maxIndex + 1
-          atomicFrameIndex.set(newMaxIndex)
           frameDrawnFlag.set(false)
-          if (newMaxIndex > drawActionsCount) {
-            animatingFlag.set(false)
-            this.cancel()
-            atomicFrameAdvanceTask.set(None)
+          pendingElements.get() match {
+            case Nil                         =>
+              this.cancel()
+              animatingFlag.set(false)
+              atomicFrameAdvanceTask.set(None)
+            case (f0 @ (shape, color)) :: fx =>
+              drawnElements.updateAndGet(_ :+ f0)
+              val g = buffer.get().createGraphics()
+              g.setColor(color)
+              g.draw(shape)
+              g.dispose()
+              pendingElements.set(fx)
           }
         }
         scrollPane.repaint()
@@ -65,8 +76,8 @@ class Canvas(defaultDelay: Int, margin: Double = Canvas.DefaultMargin) {
     }
   }
 
-  private def scheduleFrameAdvanceTask(): Unit = {
-    val frameAdvanceTask = createFrameAdvanceTask
+  private def scheduleElementAdvanceTask(): Unit = {
+    val frameAdvanceTask = createElementAdvanceTask
     atomicFrameAdvanceTask.getAndSet(Some(frameAdvanceTask)).foreach(_.cancel())
     animationTimer.schedule(
       frameAdvanceTask,
@@ -78,8 +89,9 @@ class Canvas(defaultDelay: Int, margin: Double = Canvas.DefaultMargin) {
   def startAnimation(): Unit = {
     if (!animatingFlag.get()) {
       animatingFlag.set(true)
-      atomicFrameIndex.set(0)
-      scheduleFrameAdvanceTask()
+      drawnElements.set(Vector.empty)
+      pendingElements.set(shiftedElements.get.toList)
+      scheduleElementAdvanceTask()
     }
     scrollPane.repaint()
   }
@@ -87,74 +99,106 @@ class Canvas(defaultDelay: Int, margin: Double = Canvas.DefaultMargin) {
   def continueAnimation(): Unit = {
     if (!animatingFlag.get()) {
       animatingFlag.set(true)
-      scheduleFrameAdvanceTask()
+      scheduleElementAdvanceTask()
     }
     scrollPane.repaint()
   }
 
   def component: JComponent = scrollPane
 
-  def appendFrames(a: Vector[Frame]): Unit =
+  def appendElements(a: Vector[Element]): Unit =
     SwingUtilities.invokeLater { () =>
-      rawFrames.updateAndGet(_ ++ a)
-      adjustFrames()
+      rawElements.updateAndGet(_ ++ a)
+      adjustFrames(resetDrawnElements = false)
       continueAnimation()
     }
 
-  def setAnimation(a: Animation): Unit =
+  def replaceElementsImmediately(a: Vector[Element]): Unit = {
+    clear()
     SwingUtilities.invokeLater { () =>
-      rawFrames.set(a)
-      adjustFrames()
-      startAnimation()
+      rawElements.set(a)
+      adjustFrames(resetDrawnElements = true)
+      val g = buffer.get().createGraphics()
+      shiftedElements.get.foreach {
+        case (shape, color) =>
+          g.setColor(color)
+          g.draw(shape)
+      }
+      g.dispose()
+      animatingFlag.set(false)
+      panel.repaint()
     }
-
-  def restart(): Unit = SwingUtilities.invokeLater { () =>
-    animatingFlag.set(false)
-    startAnimation()
-    panel.repaint()
   }
 
   def clear(): Unit = SwingUtilities.invokeLater { () =>
-    rawFrames.set(Vector.empty)
-    restart()
+    rawElements.set(Vector.empty)
+    shiftedElements.set(Vector.empty)
+    pendingElements.set(List.empty)
+    drawnElements.set(Vector.empty)
+    buffer.set(Canvas.createImage(panel.getWidth, panel.getHeight))
+    animatingFlag.set(false)
+    panel.repaint()
   }
 
   def updateDrawDelay(delay: Int): Unit = {
     atomicDelay.set(delay.abs)
     if (animatingFlag.get()) {
-      scheduleFrameAdvanceTask()
+      scheduleElementAdvanceTask()
     }
   }
 
-  private def adjustFrames(): Unit = {
-    val frames = rawFrames.get()
-    val (minX, minY) = frames.flatten.foldLeft((0d, 0d)) {
+  private def adjustFrames(resetDrawnElements: Boolean): Unit = {
+    val frames = rawElements.get()
+    val (minX, minY) = frames.foldLeft((0d, 0d)) {
       case ((x, y), (shape, _)) =>
         val bounds = shape.getBounds2D
         (x.min(bounds.getMinX), y.min(bounds.getMinY))
     }
-    val shift = AffineTransform.getTranslateInstance(-minX + margin, -minY + margin)
-    val shifted = frames.map(_.map {
+    val shift = AffineTransform.getTranslateInstance(-minX, -minY)
+    val shifted = frames.map {
       case (shape, color) =>
         val newShape = shift.createTransformedShape(shape)
         (newShape, color)
-    })
-    shiftedFrames.set(shifted)
-    shifted.flatten match {
+    }
+    shiftedElements.set(shifted)
+    val (drawn, pending) = shifted.splitAt(drawnElements.get.length)
+    if (resetDrawnElements) {
+      drawnElements.set(Vector.empty)
+      pendingElements.set(shifted.toList)
+    }
+    else {
+      drawnElements.set(drawn)
+      pendingElements.set(pending.toList)
+    }
+    shifted match {
       case (f0, _) +: fx =>
         val bounds = fx.foldLeft(f0.getBounds2D)(_ createUnion _._1.getBounds2D)
-        panel.setPreferredSize(new Dimension(
-          bounds.getWidth.ceil.toInt + margin.toInt,
-          bounds.getHeight.ceil.toInt + margin.toInt
-        ))
+        val width = bounds.getWidth.ceil.toInt.max(1) + margin
+        val height = bounds.getHeight.ceil.toInt.max(1) + margin
+        panel.setPreferredSize(new Dimension(width, height))
+        val newCanvas = Canvas.createImage(width, height)
+        buffer.set(newCanvas)
+        if (!resetDrawnElements) {
+          val g = newCanvas.createGraphics()
+          drawn.foreach {
+            case (shape, color) =>
+              g.setColor(color)
+              g.draw(shape)
+          }
+          g.dispose()
+        }
         scrollPane.revalidate()
-      case _ => panel.repaint()
+      case _             => panel.repaint()
     }
   }
 }
 object Canvas {
-  final val DefaultMargin = 20d
+  final val DefaultMargin = 100
+  type Element = (Shape, Color)
 
-  type Frame = Vector[(Shape, Color)]
-  type Animation = Vector[Frame]
+  def createImage(width: Int, height: Int): BufferedImage = new BufferedImage(
+    width.max(1),
+    height.max(1),
+    BufferedImage.TYPE_INT_ARGB
+  )
 }

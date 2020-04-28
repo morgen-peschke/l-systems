@@ -16,10 +16,6 @@ and have played around with them at various times in the past - partially becaus
 to generate them are so much fun to write. This particular go at them is more for my entertainment 
 than anything else, so it's a bit rough around the edges.
 
-Notably, the animation appears to have super-linear growth as the number of shapes increases, and 
-scrolling gets very slow, very quickly. This is primarily because Swing isn't my area of expertise, 
-so the GUI code is probably really cringe-worthy (apologies in advance if you're good at Swing).
-
 Several of the L-Systems invert each iteration, so they don't animate well. Eventually I'll get around
 to special-casing these, but for now expect odd rendering for the Sierpinski systems.
 

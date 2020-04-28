@@ -48,17 +48,16 @@ object Main extends App {
         val (iterationProcessor, processorCleanup): (IterationProcessor, () => Unit)
         = controlBar.renderStyle match {
           case RenderStyle.Static   =>
-            var finalFrame: Canvas.Animation = Vector.empty
+            var finalFrame: Vector[Canvas.Element] = Vector.empty
             val processor: IterationProcessor = (state, color) => {
-              finalFrame = Vector {
+              finalFrame =
                 state
                   .map(LSystem.Element.renderer)
                   .foldMapM(Turtle.renderingInterpreter)
                   .runA(Turtle.origin.setColor(color))
                   .value
               }
-            }
-            (processor, () => canvas.setAnimation(finalFrame))
+            (processor, () => canvas.replaceElementsImmediately(finalFrame))
           case RenderStyle.Animated =>
             var frameCount = 0
             val processor: IterationProcessor = (state, color) => {
@@ -70,7 +69,7 @@ object Main extends App {
                   .value
                   .drop(frameCount - 1)
               frameCount += animation.length
-              canvas.appendFrames(animation)
+              canvas.appendElements(animation)
             }
             (processor, () => ())
         }

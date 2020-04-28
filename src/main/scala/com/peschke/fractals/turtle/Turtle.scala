@@ -22,7 +22,7 @@ case class Turtle(pen: Pen, location: Point, angle: Angle) {
       y = location.y + (distance * Math.sin(angle.radians))
     ))
 
-  def forwardFrame(distance: Double): (Turtle, Canvas.Frame) =
+  def forwardFrame(distance: Double): (Turtle, Vector[Canvas.Element]) =
     Turtle.lineBetween(this, forward(distance))
 
   def penUp: Turtle = copy(pen = pen.copy(state = Turtle.Pen.State.Up))
@@ -47,8 +47,8 @@ object Turtle {
     }
   }
 
-  def lineBetween(start: Turtle, end: Turtle): (Turtle, Canvas.Frame) = {
-    val frame: Canvas.Frame = start.pen.state match {
+  def lineBetween(start: Turtle, end: Turtle): (Turtle, Vector[Canvas.Element]) = {
+    val frame: Vector[Canvas.Element] = start.pen.state match {
       case Pen.State.Up   => Vector.empty
       case Pen.State.Down => ()
         (new Line2D.Double(
@@ -76,7 +76,7 @@ object Turtle {
 
   type TurtleState[A] = State[Turtle, A]
 
-  val renderingInterpreter: Interpreter[TurtleState, Canvas.Frame] = {
+  val renderingInterpreter: Interpreter[TurtleState, Vector[Canvas.Element]] = {
     case Algebra.Forward(distance) => State(turtle => turtle.forwardFrame(distance))
     case Algebra.TurnRight(delta)  => State(turtle => (turtle.turnRight(delta), Vector.empty))
     case Algebra.TurnLeft(delta)   => State(turtle => (turtle.turnLeft(delta), Vector.empty))
@@ -85,15 +85,12 @@ object Turtle {
     case Algebra.SetColor(color)   => State(turtle => (turtle.setColor(color), Vector.empty))
   }
 
-  def animationCreationInterpreter: Interpreter[TurtleState, Canvas.Animation] = {
+  def animationCreationInterpreter: Interpreter[TurtleState, Vector[Canvas.Element] ] = {
     case Algebra.Forward(distance) => State { start =>
       val end = start.forward(distance)
       start.pen.state match {
-        case Pen.State.Up   => (end, Vector.empty[Canvas.Frame])
-        case Pen.State.Down =>
-          val (turtle, frame) = Turtle.lineBetween(start, end)
-
-          (turtle, frame.pure[Vector])
+        case Pen.State.Up   => (end, Vector.empty[Canvas.Element])
+        case Pen.State.Down => Turtle.lineBetween(start, end)
       }
     }
     case Algebra.TurnRight(delta)  => State(_.turnRight(delta) -> Vector.empty)
