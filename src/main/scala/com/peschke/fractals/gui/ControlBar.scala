@@ -13,7 +13,7 @@ class ControlBar(colorBar: ColorBar, initialIterations: Int, initialSegmentLengt
   private final val systemChoiceInput = ControlBar.systemChoicesInput
   private final val iterationsInput = ControlBar.iterationsInput(initialIterations)
   private final val segmentLengthInput = ControlBar.segmentLengthInput(initialSegmentLength)
-  private final val renderStyleInput = ControlBar.renderStyleInput
+  private final val animationStyleInput = ControlBar.renderStyleInput
   private final val renderDelayInput = ControlBar.renderDelay(initialRenderDelay)
   private final val buttonPanel = new JPanel()
   private final val renderButton = ControlBar.renderButton
@@ -31,7 +31,7 @@ class ControlBar(colorBar: ColorBar, initialIterations: Int, initialSegmentLengt
   panel.add(colorBar.component)
   panel.add(Box.createHorizontalGlue())
   panel.add(renderDelayInput)
-  panel.add(renderStyleInput)
+  panel.add(animationStyleInput)
   panel.add(buttonPanel)
 
   panel.setBorder(BorderFactory.createEtchedBorder(EtchedBorder.LOWERED))
@@ -83,8 +83,8 @@ class ControlBar(colorBar: ColorBar, initialIterations: Int, initialSegmentLengt
 
   def enable(): Unit = setEnabled(true)
 
-  def renderStyle: ControlBar.RenderStyle =
-    Option(renderStyleInput.getItemAt(renderStyleInput.getSelectedIndex)).getOrElse(ControlBar.RenderStyle.Static)
+  def animationStyle: ControlBar.AnimationStyle =
+    Option(animationStyleInput.getItemAt(animationStyleInput.getSelectedIndex)).getOrElse(ControlBar.AnimationStyle.Static)
 }
 object ControlBar {
   final val SegmentLengthScaleFactor = 10
@@ -93,19 +93,20 @@ object ControlBar {
   final val RenderAction = "render"
   final val CancelAction = "cancel"
 
-  sealed abstract class RenderStyle
-  object RenderStyle {
-    case object Static extends RenderStyle
-    case object Animated extends RenderStyle
+  sealed abstract class AnimationStyle extends enumeratum.EnumEntry
+  object AnimationStyle extends enumeratum.Enum[AnimationStyle] {
+    case object Static extends AnimationStyle
+    case object Animated extends AnimationStyle
+    override def values: immutable.IndexedSeq[AnimationStyle] = findValues
   }
 
   sealed abstract class LSystemChoices(val init: Double => LSystem) extends enumeratum.EnumEntry
   object LSystemChoices extends enumeratum.Enum[LSystemChoices] {
-    case object KochSnowflake extends LSystemChoices(LSystem.kochSnowflake(_))
-    case object KochCurve extends LSystemChoices(LSystem.kochCurve(_))
-    case object DragonCurve extends LSystemChoices(LSystem.dragonCurve(_))
-    case object SierpinskiTriangle extends LSystemChoices(LSystem.sierpinskiTriangle(_))
-    case object SierpinskiArrowHead extends LSystemChoices(LSystem.sierpinskiArrowHead(_))
+    case object KochSnowflake extends LSystemChoices(LSystem.KochSnowflake(_))
+    case object KochCurve extends LSystemChoices(LSystem.KochCurve(_))
+    case object DragonCurve extends LSystemChoices(LSystem.DragonCurve(_))
+    case object SierpinskiTriangle extends LSystemChoices(LSystem.SierpinskiTriangle(_))
+    case object SierpinskiArrowHead extends LSystemChoices(LSystem.SierpinskiArrowHead(_))
 
     override def values: immutable.IndexedSeq[LSystemChoices] = findValues
   }
@@ -187,12 +188,11 @@ object ControlBar {
     input
   }
 
-  def renderStyleInput: JComboBox[RenderStyle] = {
-    val box = new JComboBox[RenderStyle]()
+  def renderStyleInput: JComboBox[AnimationStyle] = {
+    val box = new JComboBox[AnimationStyle]()
     box.setEditable(false)
-    box.addItem(RenderStyle.Static)
-    box.addItem(RenderStyle.Animated)
-    box.setSelectedItem(RenderStyle.Static)
+    AnimationStyle.values.foreach(box.addItem)
+    box.setSelectedItem(AnimationStyle.Static)
     box.setBorder(BorderFactory.createTitledBorder("Animation Style"))
     box
   }

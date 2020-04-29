@@ -84,6 +84,7 @@ class ColorBar(initStartColor: Color, initEndColor: Color, initStepCount: Int) {
   def component: JComponent = container
 
   def colors: Vector[Color] = atomicColorList.get()
+  def endColor: Color = atomicEndColor.get()
 }
 object ColorBar {
   def interpolate(start: Float, end: Float, steps: Int): Vector[Float] = {

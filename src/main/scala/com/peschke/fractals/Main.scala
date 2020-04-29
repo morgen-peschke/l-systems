@@ -3,13 +3,10 @@ package com.peschke.fractals
 import java.awt.Color
 import java.util.concurrent.atomic.AtomicReference
 
-import cats.instances.vector._
-import cats.syntax.foldable._
-import com.peschke.fractals.gui.ControlBar.RenderStyle
+import com.peschke.fractals.gui.ControlBar.AnimationStyle
 import com.peschke.fractals.gui.{Canvas, ColorBar, ControlBar, MainWindow}
 import com.peschke.fractals.lsystem.LSystem
-import com.peschke.fractals.rendering.ColoredIterationWorker
-import com.peschke.fractals.turtle.Turtle
+import com.peschke.fractals.rendering.{ColoredIterationWorker, RenderLogic}
 import javax.swing.{SwingUtilities, SwingWorker}
 
 object Main extends App {
@@ -44,44 +41,22 @@ object Main extends App {
       () =>
         controlBar.disable()
         canvas.clear()
-        type IterationProcessor = (Vector[LSystem.Element], Color) => Unit
-        val (iterationProcessor, processorCleanup): (IterationProcessor, () => Unit)
-        = controlBar.renderStyle match {
-          case RenderStyle.Static   =>
-            var finalFrame: Vector[Canvas.Element] = Vector.empty
-            val processor: IterationProcessor = (state, color) => {
-              finalFrame =
-                state
-                  .map(LSystem.Element.renderer)
-                  .foldMapM(Turtle.renderingInterpreter)
-                  .runA(Turtle.origin.setColor(color))
-                  .value
-              }
-            (processor, () => canvas.replaceElementsImmediately(finalFrame))
-          case RenderStyle.Animated =>
-            var frameCount = 0
-            val processor: IterationProcessor = (state, color) => {
-              val animation =
-                state
-                  .map(LSystem.Element.renderer)
-                  .foldMapM(Turtle.animationCreationInterpreter)
-                  .runA(Turtle.origin.setColor(color))
-                  .value
-                  .drop(frameCount - 1)
-              frameCount += animation.length
-              canvas.appendElements(animation)
+        val renderLogic = controlBar.animationStyle match {
+          case AnimationStyle.Static   => RenderLogic.static(canvas)
+          case AnimationStyle.Animated =>
+            settings.lSystem match {
+              case LSystem.SierpinskiArrowHead(_, _) =>
+                RenderLogic.renderFirst1OfEveryNIterations(2, canvas)
+
+              case _ => RenderLogic.simple(canvas)
             }
-            (processor, () => ())
         }
         val worker =
           new ColoredIterationWorker(
             system = settings.lSystem,
-            iterations = colorBar.colors,
-            processIteration = iterationProcessor,
-            finish = () => {
-              processorCleanup()
-              controlBar.enable()
-            }
+            iterations = renderLogic.adjustColorVector(colorBar.colors),
+            logic = renderLogic,
+            finish = () => controlBar.enable()
           )
         atomicWorker.getAndSet(Some(worker)).foreach { oldWorker =>
           oldWorker.cancel(false)

@@ -16,8 +16,8 @@ and have played around with them at various times in the past - partially becaus
 to generate them are so much fun to write. This particular go at them is more for my entertainment 
 than anything else, so it's a bit rough around the edges.
 
-Several of the L-Systems invert each iteration, so they don't animate well. Eventually I'll get around
-to special-casing these, but for now expect odd rendering for the Sierpinski systems.
+Several of the L-Systems don't play well with the animation rendering. Eventually I'll get around
+to figuring out what's going on, but for now expect odd rendering for the Sierpinski triangles.
 
 My daughter decided it was sufficiently useful justify the time sink, because she figured out how to 
 make it generate the Triforce: 
