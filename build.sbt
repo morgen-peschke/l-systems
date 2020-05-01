@@ -28,4 +28,5 @@ libraryDependencies ++= Seq(
   "org.typelevel" %% "cats-free" % catsVersion,
   "com.beachape" %% "enumeratum" % enumeratumVersion,
   "com.github.julien-truffaut" %% "monocle-core" % monocleVersion,
-  "com.github.julien-truffaut" %% "monocle-macro" % monocleVersion)
+  "com.github.julien-truffaut" %% "monocle-macro" % monocleVersion,
+  "com.typesafe" % "config" % "1.4.0")

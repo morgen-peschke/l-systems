@@ -1,13 +1,11 @@
 package com.peschke.fractals
 package gui
 
-import cats.syntax.applicative._
-import cats.instances.vector._
-import com.peschke.fractals.gui.ControlBar.{ControlSettings, LSystemChoice, SegmentLengthScaleFactor}
+import java.awt.Component
+
+import com.peschke.fractals.gui.ControlBar.{ControlSettings, SegmentLengthScaleFactor}
 import com.peschke.fractals.lsystem.LSystem
-import com.peschke.fractals.lsystem.LSystem.Element
-import com.peschke.fractals.lsystem.LSystem.Element.TurnRight
-import com.peschke.fractals.turtle.{Angle, Distance}
+import com.peschke.fractals.turtle.Distance
 import javax.swing._
 import javax.swing.border.EtchedBorder
 
@@ -46,9 +44,12 @@ class ControlBar(colorBar: ColorBar, initialIterations: Int, initialSegmentLengt
   def controlSettings: ControlSettings = {
     val systemChoice =
       Option(systemChoiceInput.getItemAt(systemChoiceInput.getSelectedIndex))
-        .getOrElse(LSystemChoice.`Koch Curve`)
+        .orElse(LSystem.values.headOption)
+        .getOrElse {
+          throw new IllegalArgumentException("No L-Systems configured")
+        }
     ControlSettings(
-      lSystemChoice = systemChoice,
+      lSystem = systemChoice,
       segmentLength = Distance((segmentLengthInput.getValue.toDouble / SegmentLengthScaleFactor.toDouble).max(0.1d)),
       iterations = iterationsInput.getValue
     )
@@ -95,9 +96,7 @@ class ControlBar(colorBar: ColorBar, initialIterations: Int, initialSegmentLengt
 }
 object ControlBar {
   final val SegmentLengthScaleFactor = 10
-  case class ControlSettings(lSystemChoice: LSystemChoice, segmentLength: Distance, iterations: Int) {
-    def lSystem: LSystem = lSystemChoice.init(segmentLength)
-  }
+  case class ControlSettings(lSystem: LSystem, segmentLength: Distance, iterations: Int)
 
   final val RenderAction = "render"
   final val CancelAction = "cancel"
@@ -109,114 +108,22 @@ object ControlBar {
     override def values: immutable.IndexedSeq[AnimationStyle] = findValues
   }
 
-  sealed abstract class LSystemChoice(val init: Distance => LSystem) extends enumeratum.EnumEntry
-  object LSystemChoice extends enumeratum.Enum[LSystemChoice] {
-
-    import LSystem.Element.dsl._
-
-    case object `Koch Curve` extends LSystemChoice(implicit length => {
-      implicit val angle: Angle = Angle.deg(90)
-      LSystem(
-        {
-          case F() => Vector[Element](f, +, f, -, f, -, f, +, f)
-        },
-        f.pure
-      )
-    })
-
-    case object `Koch Snowflake` extends LSystemChoice(implicit length => {
-      implicit val angle: Angle = Angle.deg(60)
-      LSystem(
-        {
-          case F() => Vector(f, +, f, -, -, f, +, f)
-        },
-        f.pure
-      )
-    })
-
-    case object `Koch Island` extends LSystemChoice(implicit length => {
-      implicit val angle: Angle = Angle.deg(90)
-      LSystem(
-        {
-          case F() => Vector(f, -, f, +, f, +, f, f, f, -, f, -, f, +, f)
-        },
-        Vector(f, +, f, +, f, +, f)
-      )
-    })
-
-    case object `Dragon Curve` extends LSystemChoice(implicit length => {
-      implicit val angle: Angle = Angle.deg(90)
-      LSystem(
-        {
-          case X() => Vector(x, +, y, f, +)
-          case Y() => Vector(-, f, x, -, y)
-        },
-        Vector(f, x)
-      )
-    })
-
-    case object `Sierpinski Triangle` extends LSystemChoice(implicit length => {
-      implicit val angle: Angle = Angle.deg(120)
-      LSystem(
-        {
-          case F() => Vector(f, -, g, +, f, +, g, -, f)
-          case G() => Vector(g, g)
-        },
-        Vector(TurnRight("", Angle.deg(60)), f, -, g, -, g)
-      )
-    })
-
-    case object `Sierpinski ArrowHead` extends LSystemChoice(implicit length => {
-      implicit val angle: Angle = Angle.deg(60)
-      LSystem(
-        {
-          case F() => Vector(g, -, f, -, g)
-          case G() => Vector(f, +, g, +, f)
-        },
-        f.pure
-      )
-    })
-
-    case object `Hilbert Curve` extends LSystemChoice(implicit length => {
-      implicit val angle: Angle = Angle.deg(90)
-      LSystem(
-        {
-          case X() => Vector(+, y, f, -, x, f, x, -, f, y, +)
-          case Y() => Vector(-, x, f, +, y, f, y, +, f, x, -)
-        },
-        x.pure
-      )
-    })
-
-    case object `Hilbert Curve II` extends LSystemChoice(implicit length => {
-      implicit val angle: Angle = Angle.deg(90)
-      LSystem(
-        {
-          case X() => Vector(x, f, y, f, x, +, f, +, y, f, x, f, y, -, f, -, x, f, y, f, x)
-          case Y() => Vector(y, f, x, f, y, -, f, -, x, f, y, f, x, +, f, +, y, f, x, f, y)
-        },
-        x.pure
-      )
-    })
-
-    case object `Peano-Gosper Curve` extends LSystemChoice(implicit length => {
-      implicit val angle: Angle = Angle.deg(60)
-      LSystem(
-        {
-          case X() => Vector(x, +, y, f, +, +, y, f, -, f, x, -, -, f, x, f, x, -, y, f, +)
-          case Y() => Vector(-, f, x, +, y, f, y, f, +, +, y, f, +, f, x, -, -, f, x, -, y)
-        },
-        Vector(f, x)
-      )
-    })
-
-    override def values: immutable.IndexedSeq[LSystemChoice] = findValues
-  }
-
-  def systemChoicesInput: JComboBox[LSystemChoice] = {
-    val box = new JComboBox[LSystemChoice]()
+  def systemChoicesInput: JComboBox[LSystem] = {
+    val box = new JComboBox[LSystem]()
     box.setEditable(false)
-    LSystemChoice.values.foreach(box.addItem)
+    LSystem.values.foreach(box.addItem)
+    box.setRenderer(new ListCellRenderer[LSystem] {
+      private val default = new JLabel("???")
+      private val cells = LSystem.values.map(_.name).map { name =>
+        name -> new JLabel(name)
+      }.toMap
+
+      override def getListCellRendererComponent(list: JList[_ <: LSystem],
+                                                value: LSystem, index: Int,
+                                                isSelected: Boolean,
+                                                cellHasFocus: Boolean): Component =
+        cells.getOrElse(value.name, default)
+    })
     box.setSelectedIndex(0)
     box.setBorder(BorderFactory.createTitledBorder("L-System"))
     box
