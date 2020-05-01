@@ -3,9 +3,8 @@ package com.peschke.fractals
 import java.awt.Color
 import java.util.concurrent.atomic.AtomicReference
 
-import com.peschke.fractals.gui.ControlBar.AnimationStyle
+import com.peschke.fractals.gui.ControlBar.{AnimationStyle, LSystemChoice}
 import com.peschke.fractals.gui.{Canvas, ColorBar, ControlBar, MainWindow}
-import com.peschke.fractals.lsystem.LSystem
 import com.peschke.fractals.rendering.{ColoredIterationWorker, RenderLogic}
 import javax.swing.{SwingUtilities, SwingWorker}
 
@@ -44,8 +43,8 @@ object Main extends App {
         val renderLogic = controlBar.animationStyle match {
           case AnimationStyle.Static   => RenderLogic.static(canvas)
           case AnimationStyle.Animated =>
-            settings.lSystem match {
-              case LSystem.SierpinskiArrowHead(_, _) =>
+            settings.lSystemChoice match {
+              case LSystemChoice.`Sierpinski ArrowHead` =>
                 RenderLogic.renderFirst1OfEveryNIterations(2, canvas)
 
               case _ => RenderLogic.simple(canvas)

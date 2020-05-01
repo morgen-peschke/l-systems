@@ -16,13 +16,13 @@ case class Turtle(pen: Pen, location: Point, angle: Angle) {
 
   def turnRight(delta: Angle): Turtle = copy(angle = angle + delta)
 
-  def forward(distance: Double): Turtle =
+  def forward(distance: Distance): Turtle =
     copy(location = Point(
-      x = location.x + (distance * Math.cos(angle.radians)),
-      y = location.y + (distance * Math.sin(angle.radians))
+      x = location.x + (distance.value * Math.cos(angle.radians)),
+      y = location.y + (distance.value * Math.sin(angle.radians))
     ))
 
-  def forwardFrame(distance: Double): (Turtle, Vector[Canvas.Element]) =
+  def forwardFrame(distance: Distance): (Turtle, Vector[Canvas.Element]) =
     Turtle.lineBetween(this, forward(distance))
 
   def penUp: Turtle = copy(pen = pen.copy(state = Turtle.Pen.State.Up))
@@ -63,7 +63,7 @@ object Turtle {
 
   sealed abstract class Algebra
   object Algebra {
-    final case class Forward(distance: Double) extends Algebra
+    final case class Forward(distance: Distance) extends Algebra
     final case class TurnLeft(delta: Angle) extends Algebra
     final case class TurnRight(delta: Angle) extends Algebra
     case object PenUp extends Algebra

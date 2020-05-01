@@ -1,8 +1,13 @@
 package com.peschke.fractals
 package gui
 
-import com.peschke.fractals.gui.ControlBar.{ControlSettings, LSystemChoices, SegmentLengthScaleFactor}
+import cats.syntax.applicative._
+import cats.instances.vector._
+import com.peschke.fractals.gui.ControlBar.{ControlSettings, LSystemChoice, SegmentLengthScaleFactor}
 import com.peschke.fractals.lsystem.LSystem
+import com.peschke.fractals.lsystem.LSystem.Element
+import com.peschke.fractals.lsystem.LSystem.Element.TurnRight
+import com.peschke.fractals.turtle.{Angle, Distance}
 import javax.swing._
 import javax.swing.border.EtchedBorder
 
@@ -41,9 +46,10 @@ class ControlBar(colorBar: ColorBar, initialIterations: Int, initialSegmentLengt
   def controlSettings: ControlSettings = {
     val systemChoice =
       Option(systemChoiceInput.getItemAt(systemChoiceInput.getSelectedIndex))
-        .getOrElse(LSystemChoices.KochCurve)
+        .getOrElse(LSystemChoice.`Koch Curve`)
     ControlSettings(
-      lSystem = systemChoice.init((segmentLengthInput.getValue.toDouble / SegmentLengthScaleFactor.toDouble).max(0.1d)),
+      lSystemChoice = systemChoice,
+      segmentLength = Distance((segmentLengthInput.getValue.toDouble / SegmentLengthScaleFactor.toDouble).max(0.1d)),
       iterations = iterationsInput.getValue
     )
   }
@@ -84,11 +90,14 @@ class ControlBar(colorBar: ColorBar, initialIterations: Int, initialSegmentLengt
   def enable(): Unit = setEnabled(true)
 
   def animationStyle: ControlBar.AnimationStyle =
-    Option(animationStyleInput.getItemAt(animationStyleInput.getSelectedIndex)).getOrElse(ControlBar.AnimationStyle.Static)
+    Option(animationStyleInput.getItemAt(animationStyleInput.getSelectedIndex))
+      .getOrElse(ControlBar.AnimationStyle.Static)
 }
 object ControlBar {
   final val SegmentLengthScaleFactor = 10
-  case class ControlSettings(lSystem: LSystem, iterations: Int)
+  case class ControlSettings(lSystemChoice: LSystemChoice, segmentLength: Distance, iterations: Int) {
+    def lSystem: LSystem = lSystemChoice.init(segmentLength)
+  }
 
   final val RenderAction = "render"
   final val CancelAction = "cancel"
@@ -100,22 +109,115 @@ object ControlBar {
     override def values: immutable.IndexedSeq[AnimationStyle] = findValues
   }
 
-  sealed abstract class LSystemChoices(val init: Double => LSystem) extends enumeratum.EnumEntry
-  object LSystemChoices extends enumeratum.Enum[LSystemChoices] {
-    case object KochSnowflake extends LSystemChoices(LSystem.KochSnowflake(_))
-    case object KochCurve extends LSystemChoices(LSystem.KochCurve(_))
-    case object DragonCurve extends LSystemChoices(LSystem.DragonCurve(_))
-    case object SierpinskiTriangle extends LSystemChoices(LSystem.SierpinskiTriangle(_))
-    case object SierpinskiArrowHead extends LSystemChoices(LSystem.SierpinskiArrowHead(_))
+  sealed abstract class LSystemChoice(val init: Distance => LSystem) extends enumeratum.EnumEntry
+  object LSystemChoice extends enumeratum.Enum[LSystemChoice] {
 
-    override def values: immutable.IndexedSeq[LSystemChoices] = findValues
+    import LSystem.Element.dsl._
+
+    case object `Koch Curve` extends LSystemChoice(implicit length => {
+      implicit val angle: Angle = Angle.deg(90)
+      LSystem(
+        {
+          case F() => Vector[Element](f, +, f, -, f, -, f, +, f)
+        },
+        f.pure
+      )
+    })
+
+    case object `Koch Snowflake` extends LSystemChoice(implicit length => {
+      implicit val angle: Angle = Angle.deg(60)
+      LSystem(
+        {
+          case F() => Vector(f, +, f, -, -, f, +, f)
+        },
+        f.pure
+      )
+    })
+
+    case object `Koch Island` extends LSystemChoice(implicit length => {
+      implicit val angle: Angle = Angle.deg(90)
+      LSystem(
+        {
+          case F() => Vector(f, -, f, +, f, +, f, f, f, -, f, -, f, +, f)
+        },
+        Vector(f, +, f, +, f, +, f)
+      )
+    })
+
+    case object `Dragon Curve` extends LSystemChoice(implicit length => {
+      implicit val angle: Angle = Angle.deg(90)
+      LSystem(
+        {
+          case X() => Vector(x, +, y, f, +)
+          case Y() => Vector(-, f, x, -, y)
+        },
+        Vector(f, x)
+      )
+    })
+
+    case object `Sierpinski Triangle` extends LSystemChoice(implicit length => {
+      implicit val angle: Angle = Angle.deg(120)
+      LSystem(
+        {
+          case F() => Vector(f, -, g, +, f, +, g, -, f)
+          case G() => Vector(g, g)
+        },
+        Vector(TurnRight("", Angle.deg(60)), f, -, g, -, g)
+      )
+    })
+
+    case object `Sierpinski ArrowHead` extends LSystemChoice(implicit length => {
+      implicit val angle: Angle = Angle.deg(60)
+      LSystem(
+        {
+          case F() => Vector(g, -, f, -, g)
+          case G() => Vector(f, +, g, +, f)
+        },
+        f.pure
+      )
+    })
+
+    case object `Hilbert Curve` extends LSystemChoice(implicit length => {
+      implicit val angle: Angle = Angle.deg(90)
+      LSystem(
+        {
+          case X() => Vector(+, y, f, -, x, f, x, -, f, y, +)
+          case Y() => Vector(-, x, f, +, y, f, y, +, f, x, -)
+        },
+        x.pure
+      )
+    })
+
+    case object `Hilbert Curve II` extends LSystemChoice(implicit length => {
+      implicit val angle: Angle = Angle.deg(90)
+      LSystem(
+        {
+          case X() => Vector(x, f, y, f, x, +, f, +, y, f, x, f, y, -, f, -, x, f, y, f, x)
+          case Y() => Vector(y, f, x, f, y, -, f, -, x, f, y, f, x, +, f, +, y, f, x, f, y)
+        },
+        x.pure
+      )
+    })
+
+    case object `Peano-Gosper Curve` extends LSystemChoice(implicit length => {
+      implicit val angle: Angle = Angle.deg(60)
+      LSystem(
+        {
+          case X() => Vector(x, +, y, f, +, +, y, f, -, f, x, -, -, f, x, f, x, -, y, f, +)
+          case Y() => Vector(-, f, x, +, y, f, y, f, +, +, y, f, +, f, x, -, -, f, x, -, y)
+        },
+        Vector(f, x)
+      )
+    })
+
+    override def values: immutable.IndexedSeq[LSystemChoice] = findValues
   }
 
-  def systemChoicesInput: JComboBox[LSystemChoices] = {
-    val box = new JComboBox[LSystemChoices]()
+  def systemChoicesInput: JComboBox[LSystemChoice] = {
+    val box = new JComboBox[LSystemChoice]()
     box.setEditable(false)
-    LSystemChoices.values.foreach(box.addItem)
-    box.setSelectedItem(LSystemChoices.KochCurve)
+    LSystemChoice.values.foreach(box.addItem)
+    box.setSelectedIndex(0)
     box.setBorder(BorderFactory.createTitledBorder("L-System"))
     box
   }
