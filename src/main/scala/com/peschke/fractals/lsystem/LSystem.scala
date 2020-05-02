@@ -7,7 +7,7 @@ import cats.syntax.applicative._
 import cats.syntax.eq._
 import cats.syntax.traverse._
 import cats.syntax.validated._
-import com.peschke.fractals.lsystem.LSystem.Element
+import com.peschke.fractals.lsystem.LSystem.Command
 import com.peschke.fractals.turtle.Turtle.Renderer
 import com.peschke.fractals.turtle.{Angle, Distance, Turtle}
 import com.typesafe.config.{Config, ConfigFactory}
@@ -16,11 +16,13 @@ import scala.collection.JavaConverters._
 import scala.util.matching.Regex
 
 case class LSystem(name: String,
-                   rules: PartialFunction[Element, Vector[Element]],
-                   defaultSeed: Vector[Element],
+                   rules: PartialFunction[Command, Vector[Command]],
+                   defaultSeed: Vector[Command],
                    defaultAngle: Angle) {
-  def next(seed: Vector[Element]): Vector[Element] =
-    seed.flatMap(element => rules.applyOrElse(element, (_: Element).pure[Vector]))
+  def next(seed: Vector[Command]): Vector[Command] =
+    seed.flatMap(element => rules.applyOrElse(element, (_: Command).pure[Vector]))
+
+  override def toString: String = name
 }
 object LSystem {
   type ParseResult[A] = ValidatedNel[String, A]
@@ -32,7 +34,7 @@ object LSystem {
       LSystem(
         name = name,
         rules = rules.reduceLeft(_ orElse _),
-        defaultSeed = Element.parseSeed(axiomDef),
+        defaultSeed = Command.parseSeed(axiomDef),
         defaultAngle = angle
       )
     }
@@ -44,17 +46,17 @@ object LSystem {
    * The format is (whitespace and case are ignored):
    * `E->E*`
    */
-  def parseTransition(transition: String): ParseResult[PartialFunction[Element, Vector[Element]]] =
+  def parseTransition(transition: String): ParseResult[PartialFunction[Command, Vector[Command]]] =
     RuleSep.split(transition) match {
       case Array(rawSource, rawSeed) =>
         val validatedSource = rawSource.toVector.filterNot(_.isWhitespace) match {
-          case Vector(sourceChar) => Element.parseElement(sourceChar).valid
+          case Vector(sourceChar) => Command.parseElement(sourceChar).valid
           case Vector()           => s"Source element was omitted in transition definition: <$transition>".invalidNel
           case _                  => s"Source element must be a single character: <$transition>".invalidNel
         }
         validatedSource.map { source =>
-          val seed = Element.parseSeed(rawSeed)
-          val pf: PartialFunction[Element, Vector[Element]] = {
+          val seed = Command.parseSeed(rawSeed)
+          val pf: PartialFunction[Command, Vector[Command]] = {
             case s if s.symbol === source.symbol => seed
           }
           pf
@@ -63,16 +65,16 @@ object LSystem {
         s"Unable to split transition definition into source and seed: <$transition>".invalidNel
     }
 
-  sealed trait Element {
+  sealed trait Command {
     def symbol: String
   }
-  object Element {
-    final case class NoOp(symbol: String) extends Element
-    final case class Forward(symbol: String) extends Element
-    final case class TurnLeft(symbol: String) extends Element
-    final case class TurnRight(symbol: String) extends Element
+  object Command {
+    final case class NoOp(symbol: String) extends Command
+    final case class Forward(symbol: String) extends Command
+    final case class TurnLeft(symbol: String) extends Command
+    final case class TurnRight(symbol: String) extends Command
 
-    def renderer(length: Distance, angle: Angle): Renderer[Element] = {
+    def renderer(length: Distance, angle: Angle): Renderer[Command] = {
       case NoOp(_)      => Turtle.Algebra.Forward(Distance(0))
       case Forward(_)   => Turtle.Algebra.Forward(length)
       case TurnLeft(_)  => Turtle.Algebra.TurnLeft(angle)
@@ -80,7 +82,7 @@ object LSystem {
     }
 
     /**
-     * Parse an [[Element]] from a character.
+     * Parse an [[Command]] from a character.
      *
      * This is the mapping (case insensitive):
      * [[Forward]] = `F` | `G`
@@ -90,7 +92,7 @@ object LSystem {
      * Everything else maps to [[NoOp]]
      *
      */
-    def parseElement(input: Char): Element = input.toUpper match {
+    def parseElement(input: Char): Command = input.toUpper match {
       case s @ ('F' | 'G') => Forward(s.toString)
       case '+'             => TurnLeft("+")
       case '-'             => TurnRight("-")
@@ -102,7 +104,7 @@ object LSystem {
      *
      * Whitespace is ignored, otherwise the mapping follows the logic in [[parseElement()]]
      */
-    def parseSeed(input: String): Vector[Element] =
+    def parseSeed(input: String): Vector[Command] =
       input.toVector.filterNot(_.isWhitespace).map(parseElement)
   }
 

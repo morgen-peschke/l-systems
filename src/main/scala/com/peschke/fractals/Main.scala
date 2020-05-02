@@ -3,9 +3,8 @@ package com.peschke.fractals
 import java.awt.Color
 import java.util.concurrent.atomic.AtomicReference
 
-import com.peschke.fractals.gui.ControlBar.AnimationStyle
-import com.peschke.fractals.gui.{Canvas, ColorBar, ControlBar, MainWindow}
-import com.peschke.fractals.rendering.{ColoredIterationWorker, RenderLogic}
+import com.peschke.fractals.gui._
+import com.peschke.fractals.lsystem.IterationCalculationWorker
 import javax.swing.{SwingUtilities, SwingWorker}
 
 object Main extends App {
@@ -15,42 +14,60 @@ object Main extends App {
       initEndColor = Color.black,
       initStepCount = 5
     )
+    val iterationControl = new IterationControl(5)
     val controlBar = new ControlBar(
       colorBar = colorBar,
-      initialIterations = 5,
+      iterationControl = iterationControl,
       initialSegmentLength = 5,
       initialRenderDelay = 0
     )
-    val canvas = new Canvas(defaultDelay = 10)
-    controlBar.registerRenderDelayUpdateCallback { delay =>
+    val canvas = new Canvas(
+      defaultDelay = 10,
+      drawProgressBar = iterationControl.drawingProgressBar
+    )
+    controlBar.watchRenderDelayUpdate { delay =>
       () => canvas.updateDrawDelay(delay)
     }
-    controlBar.registerIterationCountUpdateCallback { iterations =>
+    iterationControl.registerUpdateCallback { iterations =>
       () => colorBar.updateStepCount(iterations)
     }
     val atomicWorker = new AtomicReference[Option[SwingWorker[Unit, Unit]]](None)
-    controlBar.registerCancelButtonPressedCallback { () =>
+
+    controlBar.watchCancelButtonPressed { () =>
       atomicWorker.getAndSet(None).foreach { oldWorker =>
         oldWorker.cancel(true)
         canvas.clear()
       }
     }
 
-    controlBar.registerRenderButtonPressedCallback { settings =>
+    controlBar.watchRenderButtonPressed { settings =>
       () =>
         controlBar.disable()
+        iterationControl.resetProgress()
         canvas.clear()
-        val renderLogic = (controlBar.animationStyle match {
-          case AnimationStyle.Static   => RenderLogic.static(canvas, _, _)
-          case AnimationStyle.Animated => RenderLogic.simple(canvas, _, _)
-        })(settings.segmentLength, settings.lSystem.defaultAngle)
+
         val worker =
-          new ColoredIterationWorker(
+          new IterationCalculationWorker(
             system = settings.lSystem,
-            iterations = renderLogic.adjustColorVector(colorBar.colors),
-            logic = renderLogic,
-            finish = () => controlBar.enable()
+            iterations = settings.iterations,
+            trackProgress = iterationControl.updateCalculateProgress,
+            finish = result => {
+              iterationControl.maxOutCalculateProgress()
+              iterationControl.setRenderProgressMax(result.length)
+              controlBar
+                .animationStyle
+                .render(
+                  settings.segmentLength,
+                  settings.lSystem.defaultAngle,
+                  result,
+                  canvas,
+                  iterationControl.updateRenderProgress
+                )
+              iterationControl.maxOutRenderProgress()
+              controlBar.enable()
+            }
           )
+
         atomicWorker.getAndSet(Some(worker)).foreach { oldWorker =>
           oldWorker.cancel(false)
           canvas.clear()

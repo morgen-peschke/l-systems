@@ -10,7 +10,7 @@ import com.peschke.fractals.gui.Canvas.Element
 import javax.swing._
 import javax.swing.border.BevelBorder
 
-class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin) {
+class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin, drawProgressBar: JProgressBar) {
   private final val rawElements = new AtomicReference[Vector[Element]](Vector.empty)
   private final val shiftedElements = new AtomicReference[Vector[Element]](Vector.empty)
   private final val drawnElements = new AtomicReference[Vector[Element]](Vector.empty)
@@ -52,6 +52,12 @@ class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin) {
   scrollPane.setBorder(BorderFactory.createBevelBorder(BevelBorder.LOWERED))
   scrollPane.setVisible(true)
 
+  private def updateProgressBar(): Unit = {
+    drawProgressBar.setMaximum(shiftedElements.get.length)
+    drawProgressBar.setValue(drawnElements.get().length)
+    drawProgressBar.repaint()
+  }
+
   private final def createElementAdvanceTask: TimerTask = new TimerTask {
     override def run(): Unit = {
       if (animatingFlag.get()) {
@@ -62,6 +68,8 @@ class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin) {
               this.cancel()
               animatingFlag.set(false)
               atomicFrameAdvanceTask.set(None)
+              drawProgressBar.setValue(drawProgressBar.getMaximum)
+              drawProgressBar.repaint()
             case (f0 @ (shape, color)) :: fx =>
               drawnElements.updateAndGet(_ :+ f0)
               val g = buffer.get().createGraphics()
@@ -69,6 +77,7 @@ class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin) {
               g.draw(shape)
               g.dispose()
               pendingElements.set(fx)
+              updateProgressBar()
           }
         }
         scrollPane.repaint()
@@ -84,16 +93,6 @@ class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin) {
       (atomicDelay.longValue() / 2).max(1L),
       atomicDelay.longValue().max(1L)
     )
-  }
-
-  def startAnimation(): Unit = {
-    if (!animatingFlag.get()) {
-      animatingFlag.set(true)
-      drawnElements.set(Vector.empty)
-      pendingElements.set(shiftedElements.get.toList)
-      scheduleElementAdvanceTask()
-    }
-    scrollPane.repaint()
   }
 
   def continueAnimation(): Unit = {
@@ -126,6 +125,8 @@ class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin) {
       }
       g.dispose()
       animatingFlag.set(false)
+      drawProgressBar.setValue(drawProgressBar.getMaximum)
+      drawProgressBar.repaint()
       panel.repaint()
     }
   }
@@ -170,6 +171,7 @@ class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin) {
       drawnElements.set(drawn)
       pendingElements.set(pending.toList)
     }
+    updateProgressBar()
     shifted match {
       case (f0, _) +: fx =>
         val bounds = fx.foldLeft(f0.getBounds2D)(_ createUnion _._1.getBounds2D)

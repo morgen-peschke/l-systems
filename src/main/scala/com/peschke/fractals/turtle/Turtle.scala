@@ -72,7 +72,7 @@ object Turtle {
   }
 
   type Interpreter[F[_], A] = Algebra => F[A]
-  type Renderer[Element] = Element => Algebra
+  type Renderer[Command] = Command => Algebra
 
   type TurtleState[A] = State[Turtle, A]
 
