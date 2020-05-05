@@ -28,9 +28,6 @@ object Main extends App {
     controlBar.watchRenderDelayUpdate { delay =>
       () => canvas.updateDrawDelay(delay)
     }
-    iterationControl.registerUpdateCallback { iterations =>
-      () => colorBar.updateStepCount(iterations)
-    }
     val atomicWorker = new AtomicReference[Option[SwingWorker[Unit, Unit]]](None)
 
     controlBar.watchCancelButtonPressed { () =>
@@ -61,6 +58,7 @@ object Main extends App {
                   settings.lSystem.defaultAngle,
                   result,
                   canvas,
+                  colorBar.colors,
                   iterationControl.updateRenderProgress
                 )
               iterationControl.maxOutRenderProgress()

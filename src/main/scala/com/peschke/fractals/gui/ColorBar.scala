@@ -9,6 +9,8 @@ class ColorBar(initStartColor: Color, initEndColor: Color, initStepCount: Int) {
   private final val container = new JPanel()
   private final val leftColumn = new JPanel()
   private final val rightColumn = new JPanel()
+  private final val colorStepsInput = IterationControl.sliderBar(10)
+
   (container :: leftColumn :: rightColumn :: Nil).foreach { c =>
     c.setLayout(new GridBagLayout)
     c.setVisible(true)
@@ -16,6 +18,7 @@ class ColorBar(initStartColor: Color, initEndColor: Color, initStepCount: Int) {
   container.setBorder(BorderFactory.createLineBorder(Color.black))
   container.add(leftColumn, ColorBar.colConstraints(0))
   container.add(rightColumn, ColorBar.colConstraints(1))
+  container.add(colorStepsInput, ColorBar.stepCountConstraints)
 
   private final val atomicStartColor = new AtomicReference[Color](initStartColor)
   private final val atomicEndColor = new AtomicReference[Color](initEndColor)
@@ -27,6 +30,11 @@ class ColorBar(initStartColor: Color, initEndColor: Color, initStepCount: Int) {
   leftColumn.add(startColorButton, ColorBar.colorPickerButtonConstraints(0))
   leftColumn.add(endColorButton, ColorBar.colorPickerButtonConstraints(1))
   leftColumn.add(bandedCheckbox, ColorBar.colorPickerButtonConstraints(2))
+
+  colorStepsInput.addChangeListener { _ =>
+    atomicStepCount.set(colorStepsInput.getValue)
+    rebuildColorList()
+  }
 
   private def rebuildColorList(): Unit = {
     rightColumn.getComponents
@@ -84,6 +92,7 @@ class ColorBar(initStartColor: Color, initEndColor: Color, initStepCount: Int) {
   def component: JComponent = container
 
   def colors: Vector[Color] = atomicColorList.get()
+
   def endColor: Color = atomicEndColor.get()
 }
 object ColorBar {
@@ -95,15 +104,15 @@ object ColorBar {
       .reverse
   }
 
-  def banded[A](input: Vector[A]): Vector[A] = {
-    val offset = (input.length / 2).max(3)
-    input
-      .zip(input.drop(offset) ++ input.take(offset))
-      .flatMap {
-        case (a, b) => Vector(a, b)
-      }
-      .take(input.length)
-  }
+  def banded[A](input: Vector[A]): Vector[A] =
+    if (input.length <= 3) input
+    else
+      input
+        .zip(input.drop(3) ++ input.take(3))
+        .flatMap {
+          case (a, b) => Vector(a, b)
+        }
+        .take(input.length)
 
   def gradient(start: Color, end: Color, steps: Int): Vector[Color] = {
     val Array(rs, gs, bs, as) = start.getRGBComponents(Option.empty.orNull)
@@ -112,8 +121,12 @@ object ColorBar {
     val greens = interpolate(gs, ge, steps)
     val blues = interpolate(bs, be, steps)
     val alphas = interpolate(as, ae, steps)
-    (reds zip greens zip blues zip alphas).map {
+    val result = (reds zip greens zip blues zip alphas).map {
       case (((red, green), blue), alpha) => new Color(red, green, blue, alpha)
+    }
+    result match {
+      case Vector() | Vector(_) => Vector(start)
+      case _ +: middle :+ _     => start +: middle :+ end
     }
   }
 
@@ -123,7 +136,8 @@ object ColorBar {
     else gradientBand
   }
 
-  final val ColorSquareName = "ColorSquareName"
+  final val ColorSquareName =
+    "ColorSquareName"
 
   def colorSquare(color: Color): JPanel = {
     val cs = new JPanel
@@ -158,5 +172,12 @@ object ColorBar {
       _.anchor = GridBagConstraints.LINE_START,
       _.fill = GridBagConstraints.HORIZONTAL,
       _.gridy = index
+    )
+
+  def stepCountConstraints: GridBagConstraints =
+    ConstraintFactory.gridBag(
+      _.gridx = 0,
+      _.gridy = 2,
+      _.gridwidth = 2
     )
 }

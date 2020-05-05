@@ -1,6 +1,8 @@
 package com.peschke.fractals
 package gui
 
+import java.awt.Color
+
 import cats.instances.vector._
 import cats.syntax.foldable._
 import com.peschke.fractals.gui.ControlBar.{AnimationStyle, ControlSettings, SegmentLengthScaleFactor}
@@ -80,9 +82,10 @@ class ControlBar(colorBar: ColorBar, iterationControl: IterationControl, initial
       SwingUtilities.invokeLater(callback(renderDelayInput.getValue))
     }
 
-  def watchAnimationStyleUpdate(callback: PartialFunction[AnimationStyle, Runnable]): Unit = animationStyleInput.addItemListener { _ =>
-    callback.andThen(SwingUtilities.invokeLater).applyOrElse(animationStyle, (_: AnimationStyle) => ())
-  }
+  def watchAnimationStyleUpdate(callback: PartialFunction[AnimationStyle, Runnable]): Unit = animationStyleInput
+    .addItemListener { _ =>
+      callback.andThen(SwingUtilities.invokeLater).applyOrElse(animationStyle, (_: AnimationStyle) => ())
+    }
 
   private def setEnabled(enabled: Boolean): Unit = {
     if (enabled) {
@@ -117,41 +120,52 @@ object ControlBar {
                angle: Angle,
                commands: Vector[LSystem.Command],
                canvas: Canvas,
+               colors: Vector[Color],
                reportProgress: Int => Unit): Unit
   }
   object AnimationStyle extends enumeratum.Enum[AnimationStyle] {
     def prepare(distance: Distance,
                 angle: Angle,
                 commands: Vector[LSystem.Command],
+                colors: Vector[Color],
                 reportProgress: Int => Unit
-               ): Vector[Canvas.Element] =
-      commands
-        .map(LSystem.Command.renderer(distance, angle))
-        .zipWithIndex
-        .foldMapM {
-          case (algebra, index) =>
-            reportProgress(index)
-            Turtle.renderingInterpreter(algebra)
-        }
-        .runA(Turtle.origin)
-        .value
+               ): Vector[Canvas.Element] = {
+      val elements =
+        commands.map(LSystem.Command.renderer(distance, angle))
+          .zipWithIndex
+          .foldMapM {
+            case (algebra, index) =>
+              reportProgress(index)
+              Turtle.renderingInterpreter(algebra)
+          }
+          .runA(Turtle.origin)
+          .value
+
+
+      val spreadFactor = (elements.length.toDouble / colors.length.toDouble).ceil.toInt
+      elements.map(_._1).zip {
+        colors.flatMap(Vector.fill(spreadFactor)(_))
+      }
+    }
 
     case object Static extends AnimationStyle {
       override def render(distance: Distance,
                           angle: Angle,
                           commands: Vector[LSystem.Command],
                           canvas: Canvas,
+                          colors: Vector[Color],
                           reportProgress: Int => Unit): Unit =
-        canvas.replaceElementsImmediately(prepare(distance, angle, commands, reportProgress))
+        canvas.replaceElementsImmediately(prepare(distance, angle, commands, colors, reportProgress))
     }
     case object Animated extends AnimationStyle {
       override def render(distance: Distance,
                           angle: Angle,
                           commands: Vector[LSystem.Command],
                           canvas: Canvas,
+                          colors: Vector[Color],
                           reportProgress: Int => Unit): Unit = {
         canvas.clear()
-        canvas.appendElements(prepare(distance, angle, commands, reportProgress))
+        canvas.appendElements(prepare(distance, angle, commands, colors, reportProgress))
       }
     }
     override def values: immutable.IndexedSeq[AnimationStyle] = findValues
