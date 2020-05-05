@@ -12,9 +12,8 @@ import javax.swing.border.BevelBorder
 
 class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin, drawProgressBar: JProgressBar) {
   private final val rawElements = new AtomicReference[Vector[Element]](Vector.empty)
-  private final val shiftedElements = new AtomicReference[Vector[Element]](Vector.empty)
-  private final val drawnElements = new AtomicReference[Vector[Element]](Vector.empty)
-  private final val pendingElements = new AtomicReference[List[Element]](List.empty)
+  private final val drawCount = new AtomicInteger(0)
+  private final val pendingElements = new AtomicReference[Iterator[Element]](Iterator.empty)
   private final val buffer = new AtomicReference[BufferedImage](Canvas.createImage(500, 500))
 
   private final val frameDrawnFlag = new AtomicBoolean(false)
@@ -53,8 +52,8 @@ class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin, drawProgress
   scrollPane.setVisible(true)
 
   private def updateProgressBar(): Unit = {
-    drawProgressBar.setMaximum(shiftedElements.get.length)
-    drawProgressBar.setValue(drawnElements.get().length)
+    drawProgressBar.setMaximum(rawElements.get.length)
+    drawProgressBar.setValue(drawCount.get())
     drawProgressBar.repaint()
   }
 
@@ -63,21 +62,23 @@ class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin, drawProgress
       if (animatingFlag.get()) {
         if (frameDrawnFlag.get()) {
           frameDrawnFlag.set(false)
-          pendingElements.get() match {
-            case Nil                         =>
-              this.cancel()
-              animatingFlag.set(false)
-              atomicFrameAdvanceTask.set(None)
-              drawProgressBar.setValue(drawProgressBar.getMaximum)
-              drawProgressBar.repaint()
-            case (f0 @ (shape, color)) :: fx =>
-              drawnElements.updateAndGet(_ :+ f0)
+          val itr = pendingElements.get()
+          if (itr.hasNext) itr.next() match {
+            case (shape, color) =>
+              drawCount.incrementAndGet()
               val g = buffer.get().createGraphics()
               g.setColor(color)
               g.draw(shape)
               g.dispose()
-              pendingElements.set(fx)
               updateProgressBar()
+              panel.repaint()
+          }
+          else {
+            this.cancel()
+            animatingFlag.set(false)
+            atomicFrameAdvanceTask.set(None)
+            drawProgressBar.setValue(drawProgressBar.getMaximum)
+            drawProgressBar.repaint()
           }
         }
         scrollPane.repaint()
@@ -95,30 +96,25 @@ class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin, drawProgress
     )
   }
 
-  def continueAnimation(): Unit = {
-    if (!animatingFlag.get()) {
-      animatingFlag.set(true)
-      scheduleElementAdvanceTask()
-    }
-    scrollPane.repaint()
-  }
-
   def component: JComponent = scrollPane
 
-  def appendElements(a: Vector[Element]): Unit =
+  def animateDrawing(a: Vector[Element]): Unit =
     SwingUtilities.invokeLater { () =>
-      rawElements.updateAndGet(_ ++ a)
-      adjustFrames(resetDrawnElements = false)
-      continueAnimation()
+      clearImmediately()
+      rawElements.set(a)
+      adjustFrames()
+      animatingFlag.set(true)
+      scheduleElementAdvanceTask()
+      scrollPane.repaint()
     }
 
-  def replaceElementsImmediately(a: Vector[Element]): Unit = {
-    clear()
+  def drawImmediately(a: Vector[Element]): Unit = {
+    clearImmediately()
     SwingUtilities.invokeLater { () =>
       rawElements.set(a)
-      adjustFrames(resetDrawnElements = true)
+      adjustFrames()
       val g = buffer.get().createGraphics()
-      shiftedElements.get.foreach {
+      pendingElements.get.foreach {
         case (shape, color) =>
           g.setColor(color)
           g.draw(shape)
@@ -131,11 +127,12 @@ class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin, drawProgress
     }
   }
 
-  def clear(): Unit = SwingUtilities.invokeLater { () =>
+  def clear(): Unit = SwingUtilities.invokeLater(() => clearImmediately())
+
+  private def clearImmediately(): Unit = {
     rawElements.set(Vector.empty)
-    shiftedElements.set(Vector.empty)
-    pendingElements.set(List.empty)
-    drawnElements.set(Vector.empty)
+    pendingElements.set(Iterator.empty)
+    drawCount.set(0)
     buffer.set(Canvas.createImage(panel.getWidth, panel.getHeight))
     animatingFlag.set(false)
     panel.repaint()
@@ -148,7 +145,7 @@ class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin, drawProgress
     }
   }
 
-  private def adjustFrames(resetDrawnElements: Boolean): Unit = {
+  private def adjustFrames(): Unit = {
     val frames = rawElements.get()
     val (minX, minY) = frames.foldLeft((0d, 0d)) {
       case ((x, y), (shape, _)) =>
@@ -161,16 +158,8 @@ class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin, drawProgress
         val newShape = shift.createTransformedShape(shape)
         (newShape, color)
     }
-    shiftedElements.set(shifted)
-    val (drawn, pending) = shifted.splitAt(drawnElements.get.length)
-    if (resetDrawnElements) {
-      drawnElements.set(Vector.empty)
-      pendingElements.set(shifted.toList)
-    }
-    else {
-      drawnElements.set(drawn)
-      pendingElements.set(pending.toList)
-    }
+    drawCount.set(0)
+    pendingElements.set(shifted.iterator)
     updateProgressBar()
     shifted match {
       case (f0, _) +: fx =>
@@ -180,15 +169,6 @@ class Canvas(defaultDelay: Int, margin: Int = Canvas.DefaultMargin, drawProgress
         panel.setPreferredSize(new Dimension(width, height))
         val newCanvas = Canvas.createImage(width, height)
         buffer.set(newCanvas)
-        if (!resetDrawnElements) {
-          val g = newCanvas.createGraphics()
-          drawn.foreach {
-            case (shape, color) =>
-              g.setColor(color)
-              g.draw(shape)
-          }
-          g.dispose()
-        }
         scrollPane.revalidate()
       case _             => panel.repaint()
     }

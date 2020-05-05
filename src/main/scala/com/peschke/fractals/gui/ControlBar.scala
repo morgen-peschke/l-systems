@@ -155,7 +155,7 @@ object ControlBar {
                           canvas: Canvas,
                           colors: Vector[Color],
                           reportProgress: Int => Unit): Unit =
-        canvas.replaceElementsImmediately(prepare(distance, angle, commands, colors, reportProgress))
+        canvas.drawImmediately(prepare(distance, angle, commands, colors, reportProgress))
     }
     case object Animated extends AnimationStyle {
       override def render(distance: Distance,
@@ -164,8 +164,7 @@ object ControlBar {
                           canvas: Canvas,
                           colors: Vector[Color],
                           reportProgress: Int => Unit): Unit = {
-        canvas.clear()
-        canvas.appendElements(prepare(distance, angle, commands, colors, reportProgress))
+        canvas.animateDrawing(prepare(distance, angle, commands, colors, reportProgress))
       }
     }
     override def values: immutable.IndexedSeq[AnimationStyle] = findValues
